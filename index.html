@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Billiards Match — 25 Games (1v1 with Subtotals)</title>
+<style>
+:root {
+  --border:#c8c8c8;
+  --header:#f3f6f9;
+  --muted:#6b6b6b;
+  --font-sans:"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+body {
+  margin:0; padding:16px;
+  font-family:var(--font-sans);
+  background:linear-gradient(180deg,#f6f8fb,#ffffff 60%);
+  color:#222;
+}
+h1 { font-size:1.4rem; margin-bottom:8px; }
+.small-muted { font-size:0.8rem; color:var(--muted); margin-bottom:12px; display:block; }
+.team-select-container { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+.team-select-container label { flex:1 1 200px; display:flex; flex-direction:column; font-weight:600; }
+select { padding:6px; font-size:0.9rem; border-radius:4px; border:1px solid #ccc; }
+.table-wrapper { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; min-width:650px; margin-bottom:16px; }
+th, td { padding:6px 8px; border:1px solid var(--border); text-align:center; font-size:0.85rem; }
+th { background:var(--header); font-weight:700; }
+th:nth-child(3), td:nth-child(3),
+th:nth-child(6), td:nth-child(6) { min-width:180px; max-width:250px; text-align:left; }
+th:nth-child(2), td:nth-child(2),
+th:nth-child(5), td:nth-child(5) { width:50px; }
+tr.subtotal-row td { font-weight:700; background:#fbfcfd; }
+tr.set-separator td { border-top:1px solid #999; padding:0; height:4px; background:transparent; }
+input[type="number"], select {
+  width:100%; box-sizing:border-box; padding:4px 6px; font-size:0.85rem;
+  border:1px solid #dcdcdc; border-radius:4px;
+}
+input:focus, select:focus { outline:2px solid #cfe9ff; text-align:center; }
+.overall { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; }
+.overall .card { flex:1 1 120px; padding:10px; border:1px solid var(--border);
+  border-radius:6px; background:#fff; text-align:center; }
+@media(max-width:768px){
+  h1 { font-size:1.2rem; }
+  th, td { font-size:0.75rem; padding:4px 6px; }
+  .overall .card { flex:1 1 100%; }
+  th:nth-child(3), td:nth-child(3),
+  th:nth-child(6), td:nth-child(6) { min-width:120px; }
+  th:nth-child(2), td:nth-child(2),
+  th:nth-child(5), td:nth-child(5) { width:50px; }
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+  <h1>Billiards Match — 25 Games (1v1 with Set Subtotals)</h1>
+  <span class="small-muted">Teams and players auto-loaded from CSV.</span>
+
+  <div class="team-select-container">
+    <label>Home Team:
+      <select id="homeTeamSelect"><option value="">--Select Team--</option></select>
+    </label>
+    <label>Away Team:
+      <select id="awayTeamSelect"><option value="">--Select Team--</option></select>
+    </label>
+  </div>
+
+  <div class="table-wrapper">
+    <table id="matchTable">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Home HDCP</th>
+          <th>Home Player</th>
+          <th>Home Score</th>
+          <th>Away HDCP</th>
+          <th>Away Player</th>
+          <th>Away Score</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="overall">
+    <div class="card">
+      <div class="small-muted">Overall Home Total</div>
+      <div id="overallHome" style="font-size:1.2rem;font-weight:700;">0</div>
+    </div>
+    <div class="card">
+      <div class="small-muted">Overall Away Total</div>
+      <div id="overallAway" style="font-size:1.2rem;font-weight:700;">0</div>
+    </div>
+  </div>
+
+  <button id="emailButton" style="padding:10px 20px;font-size:1rem;margin-top:15px;">
+    ✉️ Submit & Email Results
+  </button>
+</div>
+
+<script>
+(function(){
+  const TOTAL_GAMES = 25;
+  const MATCHES_PER_SET = 5;
+  const tbody = document.querySelector('#matchTable tbody');
+  const sets = [];
+  let teams = {};
+
+  const homeTeamSelect = document.getElementById('homeTeamSelect');
+  const awayTeamSelect = document.getElementById('awayTeamSelect');
+  const scoreOptions = [0,1,2,3,4,5,6,7,10].map(v => `<option value="${v}">${v}</option>`).join('');
+
+  // Build match rows
+  for(let i=1;i<=TOTAL_GAMES;i++){
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${i}</td>
+      <td><input type="number" min="0" step="1" value="0" data-field="homeHdcp" readonly></td>
+      <td><select class="player-select" data-field="homePlayer"><option value="">--Select Player--</option></select></td>
+      <td><select data-field="homeScore">${scoreOptions}</select></td>
+      <td><input type="number" min="0" step="1" value="0" data-field="awayHdcp" readonly></td>
+      <td><select class="player-select" data-field="awayPlayer"><option value="">--Select Player--</option></select></td>
+      <td><select data-field="awayScore">${scoreOptions}</select></td>
+    `;
+    tbody.appendChild(row);
+
+    const setIndex = Math.floor((i-1)/MATCHES_PER_SET);
+    if(!sets[setIndex]) sets[setIndex] = [];
+    sets[setIndex].push(row);
+
+    if(i % MATCHES_PER_SET === 0){
+      const subtotalRow = document.createElement('tr');
+      subtotalRow.className = 'subtotal-row';
+      subtotalRow.innerHTML = `
+        <td colspan="3">SET ${setIndex+1} SUBTOTAL</td>
+        <td data-subtotal-home>0</td>
+        <td colspan="2"></td>
+        <td data-subtotal-away>0</td>
+      `;
+      tbody.appendChild(subtotalRow);
+
+      if(i < TOTAL_GAMES){
+        const sep = document.createElement('tr');
+        sep.className = 'set-separator';
+        sep.innerHTML = '<td colspan="7"></td>';
+        tbody.appendChild(sep);
+      }
+    }
+  }
+
+  function toInt(v){ return parseInt(v)||0; }
+
+  function recalcTotals(){
+    let overallHome=0, overallAway=0;
+    const subtotalRows = tbody.querySelectorAll('.subtotal-row');
+    sets.forEach((setRows, setIndex) => {
+      let setHomeRaw = 0, setAwayRaw = 0;
+      let setHomeHdcp = 0, setAwayHdcp = 0;
+      setRows.forEach(r => {
+        const hScore = toInt(r.querySelector('[data-field="homeScore"]').value);
+        const hHdcp = toInt(r.querySelector('[data-field="homeHdcp"]').value);
+        const aScore = toInt(r.querySelector('[data-field="awayScore"]').value);
+        const aHdcp = toInt(r.querySelector('[data-field="awayHdcp"]').value);
+        setHomeRaw += hScore;
+        setAwayRaw += aScore;
+        setHomeHdcp += hHdcp;
+        setAwayHdcp += aHdcp;
+      });
+      let setHome = setHomeRaw;
+      let setAway = setAwayRaw;
+      const hdcpDiff = setHomeHdcp - setAwayHdcp;
+      if(hdcpDiff > 0) setAway += hdcpDiff;
+      else if(hdcpDiff < 0) setHome += Math.abs(hdcpDiff);
+      subtotalRows[setIndex].querySelector('[data-subtotal-home]').textContent = setHome;
+      subtotalRows[setIndex].querySelector('[data-subtotal-away]').textContent = setAway;
+      overallHome += setHome;
+      overallAway += setAway;
+    });
+    document.getElementById('overallHome').textContent = overallHome;
+    document.getElementById('overallAway').textContent = overallAway;
+  }
+
+  function populatePlayers(side){
+    const team = side==='home'?homeTeamSelect.value:awayTeamSelect.value;
+    sets.forEach(setRows=>{
+      setRows.forEach(row=>{
+        const select = row.querySelector(`[data-field="${side}Player"]`);
+        const hdcpInput = row.querySelector(`[data-field="${side}Hdcp"]`);
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">--Select Player--</option>';
+        if(team && teams[team]){
+          teams[team].forEach(p=>{
+            const opt = document.createElement('option');
+            opt.value = p.name;
+            opt.textContent = p.name;
+            opt.dataset.hdcp = p.hdcp;
+            select.appendChild(opt);
+          });
+        }
+        if(currentValue) select.value = currentValue;
+        const selectedOption = select.selectedOptions[0];
+        hdcpInput.value = selectedOption && selectedOption.dataset.hdcp ? selectedOption.dataset.hdcp : 0;
+      });
+    });
+    enforceUniquePlayers();
+    recalcTotals();
+  }
+
+  function enforceUniquePlayers() {
+    sets.forEach(setRows => {
+      const selectedHome = new Set();
+      const selectedAway = new Set();
+      setRows.forEach(row => {
+        const hSelect = row.querySelector('[data-field="homePlayer"]');
+        const aSelect = row.querySelector('[data-field="awayPlayer"]');
+        if(hSelect.value) selectedHome.add(hSelect.value);
+        if(aSelect.value) selectedAway.add(aSelect.value);
+      });
+      setRows.forEach(row => {
+        const hSelect = row.querySelector('[data-field="homePlayer"]');
+        const aSelect = row.querySelector('[data-field="awayPlayer"]');
+        Array.from(hSelect.options).forEach(opt => {
+          opt.disabled = opt.value && opt.value !== hSelect.value && selectedHome.has(opt.value);
+        });
+        Array.from(aSelect.options).forEach(opt => {
+          opt.disabled = opt.value && opt.value !== aSelect.value && selectedAway.has(opt.value);
+        });
+      });
+    });
+  }
+
+  homeTeamSelect.addEventListener('change',()=>populatePlayers('home'));
+  awayTeamSelect.addEventListener('change',()=>populatePlayers('away'));
+
+  tbody.addEventListener('change', e=>{
+    if(e.target.matches('.player-select')){
+      const row = e.target.closest('tr');
+      const side = e.target.dataset.field==='homePlayer'?'home':'away';
+      const hdcpInput = row.querySelector(`[data-field="${side}Hdcp"]`);
+      const selectedOption = e.target.selectedOptions[0];
+      hdcpInput.value = selectedOption && selectedOption.dataset.hdcp ? selectedOption.dataset.hdcp : 0;
+      enforceUniquePlayers();
+    }
+    recalcTotals();
+  });
+
+  tbody.addEventListener('change', e=>{
+    if(e.target.matches('select[data-field$="Score"]')){
+      recalcTotals();
+    }
+  });
+
+  // --- CSV AUTO-LOAD FROM GITHUB ---
+  const CSV_URL = "data.csv"; // relative path on GitHub Pages
+  fetch(CSV_URL)
+    .then(response => {
+      if(!response.ok) throw new Error("Failed to fetch CSV");
+      return response.text();
+    })
+    .then(csvText => {
+      parseCSV(csvText);
+      populateTeamSelectors();
+    })
+    .catch(err => console.error("Error loading CSV:", err));
+
+  function parseCSV(csvText){
+    teams = {};
+    const lines = csvText.trim().split('\n');
+    for(const line of lines){
+      const cols = line.split(',');
+      if(cols.length < 3) continue;
+      const team = cols[0].trim();
+      const player = cols[1].trim();
+      const hdcp = parseInt(cols[2]) || 0;
+      if(!teams[team]) teams[team] = [];
+      teams[team].push({ name: player, hdcp });
+    }
+  }
+
+  function populateTeamSelectors(){
+    [homeTeamSelect, awayTeamSelect].forEach(select=>{
+      select.innerHTML = '<option value="">--Select Team--</option>';
+    });
+    Object.keys(teams).forEach(team=>{
+      [homeTeamSelect, awayTeamSelect].forEach(select=>{
+        const opt = document.createElement('option');
+        opt.value = team;
+        opt.textContent = team;
+        select.appendChild(opt);
+      });
+    });
+  }
+
+  // --- EMAIL FUNCTIONALITY ---
+  document.getElementById('emailButton').addEventListener('click', function() {
+    const homeTeam = homeTeamSelect.value || 'Home Team';
+    const awayTeam = awayTeamSelect.value || 'Away Team';
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    const rows = [['Game #','Home Player','Home Score','Away Player','Away Score']];
+    document.querySelectorAll('#matchTable tbody tr').forEach((row) => {
+      if (row.classList.contains('subtotal-row') || row.classList.contains('set-separator')) return;
+      const game = row.querySelector('td').textContent.trim();
+      const homePlayer = row.querySelector('[data-field="homePlayer"]').value || '';
+      const homeScore = row.querySelector('[data-field="homeScore"]').value || '';
+      const awayPlayer = row.querySelector('[data-field="awayPlayer"]').value || '';
+      const awayScore = row.querySelector('[data-field="awayScore"]').value || '';
+      rows.push([game, homePlayer, homeScore, awayPlayer, awayScore]);
+    });
+    const csvBody = rows.map(r => r.join(',')).join('\n');
+
+    const emailTo = "someone@example.com"; // <-- change this
+    const subject = `${homeTeam} vs ${awayTeam} — ${today}`;
+    const body =
+`Match Results: ${homeTeam} vs ${awayTeam}
+
+${csvBody}
+`;
+
+    window.location.href = `mailto:${emailTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  });
+})();
+</script>
+</body>
+</html>
