@@ -251,8 +251,8 @@ input:focus, select:focus { outline:2px solid #cfe9ff; text-align:center; }
     }
   });
 
-  // --- CSV AUTO-LOAD FROM GITHUB ---
-  const CSV_URL = "data.csv"; // relative path on GitHub Pages
+  // --- CSV AUTO-LOAD ---
+  const CSV_URL = "data.csv";
   fetch(CSV_URL)
     .then(response => {
       if(!response.ok) throw new Error("Failed to fetch CSV");
@@ -296,31 +296,47 @@ input:focus, select:focus { outline:2px solid #cfe9ff; text-align:center; }
   document.getElementById('emailButton').addEventListener('click', function() {
     const homeTeam = homeTeamSelect.value || 'Home Team';
     const awayTeam = awayTeamSelect.value || 'Away Team';
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0];
 
-    const rows = [['Game #','Home Player','Home Score','Away Player','Away Score']];
+    let emailLines = [];
+    emailLines.push(`Player | Score | Handicap Points`);
+
     document.querySelectorAll('#matchTable tbody tr').forEach((row) => {
       if (row.classList.contains('subtotal-row') || row.classList.contains('set-separator')) return;
-      const game = row.querySelector('td').textContent.trim();
       const homePlayer = row.querySelector('[data-field="homePlayer"]').value || '';
       const homeScore = row.querySelector('[data-field="homeScore"]').value || '';
+      const homeHdcp = parseInt(row.querySelector('[data-field="homeHdcp"]').value) || 0;
       const awayPlayer = row.querySelector('[data-field="awayPlayer"]').value || '';
       const awayScore = row.querySelector('[data-field="awayScore"]').value || '';
-      rows.push([game, homePlayer, homeScore, awayPlayer, awayScore]);
-    });
-    const csvBody = rows.map(r => r.join(',')).join('\n');
+      const awayHdcp = parseInt(row.querySelector('[data-field="awayHdcp"]').value) || 0;
 
-    const emailTo = "jakelangendoen39@gmail.com"; // <-- change this
+      const hdcpDiff = homeHdcp - awayHdcp;
+      let homeExtra = '';
+      let awayExtra = '';
+
+      if (hdcpDiff > 0) {
+        awayExtra = hdcpDiff;
+      } else if (hdcpDiff < 0) {
+        homeExtra = Math.abs(hdcpDiff);
+      }
+
+      emailLines.push(`${homePlayer}\t${homeScore}\t${homeExtra}`);
+      emailLines.push(`${awayPlayer}\t${awayScore}\t${awayExtra}`);
+    });
+
+    const emailTo = "jakelangendoen39@gmail.com";
     const subject = `${homeTeam} vs ${awayTeam} — ${today}`;
     const body =
 `Match Results: ${homeTeam} vs ${awayTeam}
 
-${csvBody}
+${emailLines.join('\n')}
 `;
 
     window.location.href = `mailto:${emailTo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   });
+
 })();
 </script>
 </body>
 </html>
+
